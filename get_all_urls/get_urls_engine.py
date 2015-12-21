@@ -1,0 +1,179 @@
+import requests
+from requests.auth import HTTPBasicAuth
+import json
+from unidecode import unidecode
+import sqlite3
+import lxml.html
+from subprocess import call
+import os
+from datetime import datetime
+import pandas as pd
+
+class DatabaseEngine:
+    def initialize_database(self):
+        self.create_schema()
+        self.create_db()
+
+    def create_schema(self):
+        if os.path.exists("database.db"):
+            os.remove("database.db")
+        table = """
+        drop table if exists html;
+        create table html (
+        id integer primary key autoincrement,
+        url text not null,
+        html text not null
+        );
+        """
+        with open("schema.sql","w") as schema:
+            schema.write(table)
+
+    def create_db(self):
+        call(["./create_db.sh"],shell=True)
+
+    def save(self,url,html):
+        if not os.path.exists("database.db"):
+            self.initialize_database()
+        with sqlite3.connect("database.db") as con:
+            cur = con.cursor()
+            cur.execute("insert into html (url,html) values (?,?)",(url,html))
+
+
+
+class Crawler:
+    #6 as a max is recommended for depth
+    #Turn off saving, soon
+    def __init__(self,base_url,depth,grab_all=False,
+                 save_to_database=False,basic_auth_required=False,
+                 username=None,password=None,testing=False,protocol="https"
+    ):
+        self.base_url = base_url
+        self.protocol = protocol + "://"
+        #this gets the important parts of the base url
+        self.domain_name = self.protocol+self.get_domain_name(base_url) #change this back to https
+        self.username = username
+        self.basic_auth_required = basic_auth_required
+        self.password = password
+        self.created = str(datetime.now())
+        self.start_depth = depth
+        self.testing = testing
+        if not self.testing: self.df = pd.read_excel("page_descriptions.xlsx")
+        self.urls = []
+        self.data = []
+        self.unique_data = []
+        self.num_urls = 0
+        self.grab_all = grab_all
+        self.save_to_database = save_to_database
+        if self.save_to_database:
+            self.db = DatabaseEngine()
+    
+    def save_to_json(self):
+        if self.data != []:
+            json.dump(self.data,open("index.json","w"))
+            return json.dumps(self.data)
+                
+    def setup_database_saving(self):
+        self.save_to_database = True
+        self.db = DatabaseEngine()
+
+    def get_domain_name(self, url):
+        if "https://" in url:
+            self.protocol = "https://"
+        elif "http://" in url:
+            self.protocol = "http://"
+        else:
+            self.protocol = None
+        return url.split("//")[1].split("/")[0]
+    
+    def update_base_url(self,base_url):
+        self.base_url = base_url
+
+    def update_depth(self,depth):
+        self.start_depth = depth
+    
+    def update_credentials(self,username,password):
+        self.username = username
+        self.password = password
+
+    def url_exists(self,url):
+        for datum in self.data:
+            if url == datum["path"]:
+                return True
+        return False
+
+    def incorrect_url_ending(self,url):
+        if url.endswith(".csv"): return True
+        if url.endswith(".do"): return True
+        if url.endswith(".pdf"):return True
+        if "search_jobs?" in url: return True
+        if "settings?" in url: return True
+        if "request-password-reset?" in url: return True
+        else: return False
+
+    def links_grab(self,url):
+        if self.incorrect_url_ending(url): return [] 
+        if self.basic_auth_required:
+            r = requests.get(url,auth=HTTPBasicAuth(self.username, self.password))
+        else:
+            r = requests.get(url)
+        html = lxml.html.fromstring(unidecode(r.text))
+        content = str(unidecode(html.text_content()))
+        content = "".join([elem for elem in content if not elem in ["\t","\n","\r"]])
+        content = " ".join([elem for elem in content.split(" ") if elem != ''])
+        #if self.save_to_database: self.db.save(url,content) #saves to the database, database.db
+        datum = {}
+        try:
+            datum["title"] = html.xpath("//title")[0].text_content()
+        except:
+            print r.url
+
+        if r.url.startswith("/"):
+            datum["url"] = self.domain_name+r.url
+        else:
+            datum["url"] = r.url
+        self.data.append(datum)
+        url_list = html.xpath("//a/@href") 
+        uri_list = []
+        for uri in url_list:
+            if uri.startswith("/"):
+                uri_list.append(self.domain_name+uri)
+            else:
+                uri_list.append(uri)
+        return uri_list + [url] #ensures the url is stored in the final list
+
+    def crawl(self):
+        return self.crawler([self.base_url],self.start_depth)
+    
+    def crawler(self,urls,depth):
+        urls = list(set(urls))
+        url_list = []
+        for url in urls:
+            if self.grab_all:
+                url_list += self.links_grab(url)
+            else:
+                if self.domain_name in url:
+                    url_list += self.links_grab(url)
+        url_list = list(set(url_list)) #dedup list
+        url_list = [uri for uri in url_list if uri.startswith(self.domain_name)] 
+        if depth > 1:
+            url_list += self.crawler(url_list,depth-1)
+        self.urls += url_list
+        #temporary prune
+        self.urls = list(set(self.urls))
+        #self.data = {v['url']:v for v in self.data}.values()
+        self.num_urls = len(self.urls)
+        return url_list
+    def uniqueify(self):
+        new_data = []
+        for ind,datum in enumerate(self.data):
+            if not any([datum["url"] == elem["url"] for elem in self.data[ind+1:]]):
+                new_data.append(datum)
+        self.unique_data = new_data
+            
+if __name__ == '__main__':
+    #initialize_database()
+    c = Crawler("https://hackingagainstslavery.github.io",2,grab_all=True)
+    c.crawl()
+    print c.urls
+    #print c.num_urls
+    #print c.data
