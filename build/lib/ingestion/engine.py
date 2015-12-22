@@ -128,9 +128,9 @@ class Crawler:
         datum["created"] = self.created
         datum["content"] = content
         if r.url.startswith("/"):
-            datum["url"] = self.domain_name+r.url
+            datum["path"] = self.domain_name+r.url
         else:
-            datum["url"] = r.url
+            datum["path"] = r.url
         self.data.append(datum)
         url_list = html.xpath("//a/@href") 
         uri_list = []

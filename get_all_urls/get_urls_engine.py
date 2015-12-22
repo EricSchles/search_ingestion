@@ -38,8 +38,6 @@ class DatabaseEngine:
             cur = con.cursor()
             cur.execute("insert into html (url,html) values (?,?)",(url,html))
 
-
-
 class Crawler:
     #6 as a max is recommended for depth
     #Turn off saving, soon
@@ -163,6 +161,7 @@ class Crawler:
         #self.data = {v['url']:v for v in self.data}.values()
         self.num_urls = len(self.urls)
         return url_list
+
     def uniqueify(self):
         new_data = []
         for ind,datum in enumerate(self.data):
