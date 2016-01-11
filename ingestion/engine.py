@@ -67,7 +67,7 @@ class Crawler:
     
     def save_to_json(self):
         if self.data != []:
-            json.dump(self.data,open("index.json","w"))
+            json.dump(self.unique_data,open("index.json","w"))
             return json.dumps(self.data)
                 
     def setup_database_saving(self):
@@ -131,6 +131,16 @@ class Crawler:
             datum["url"] = self.domain_name+r.url
         else:
             datum["url"] = r.url
+            
+        if self.testing:
+            datum["description"] = 'none'
+        else:
+            try:
+                datum["description"] = str(self.df.Description[self.df.Page_Address == r.url].tolist()[0]) 
+            except:
+                datum["description"] = "none"
+        datum["promote"] = "false"
+        datum["language"] = "en"
         self.data.append(datum)
         url_list = html.xpath("//a/@href") 
         uri_list = []
@@ -163,12 +173,15 @@ class Crawler:
         #self.data = {v['url']:v for v in self.data}.values()
         self.num_urls = len(self.urls)
         return url_list
-
+    
     def uniqueify(self):
         new_data = []
+        urls = [] # a list of already seen urls
         for ind,datum in enumerate(self.data):
-            if not any([datum["url"] == elem["url"] for elem in self.data[ind+1:]]):
-                new_data.append(datum)
+            for elem in self.data[ind+1:]: #check n+1 elements for element
+                if not elem['url'] in urls:
+                    urls.apend(elem['url'])
+                    new_data.append(datum)
         self.unique_data = new_data
             
 if __name__ == '__main__':
