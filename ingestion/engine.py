@@ -178,10 +178,10 @@ class Crawler:
         new_data = []
         urls = [] # a list of already seen urls
         for ind,datum in enumerate(self.data):
-            for elem in self.data[ind+1:]: #check n+1 elements for element
-                if not elem['url'] in urls:
-                    urls.apend(elem['url'])
-                    new_data.append(datum)
+            #for elem in self.data[ind+1:]: #check n+1 elements for element
+            if not datum['url'] in urls:
+                urls.append(datum['url'])
+                new_data.append(datum)
         self.unique_data = new_data
             
 if __name__ == '__main__':
